@@ -10,7 +10,6 @@ import (
 
 	shipper "github.com/bookingcom/shipper/pkg/apis/shipper/v1alpha1"
 	"github.com/bookingcom/shipper/pkg/util/conditions"
-	"github.com/bookingcom/shipper/pkg/util/replicas"
 )
 
 const (
@@ -35,10 +34,13 @@ var app = &shipper.Application{
 	},
 }
 
-// TestCompleteStrategyNoController tests the complete "vanguard" strategy, end-to-end.
-// This test exercises only the Executor.execute() method, using hard coded
-// incumbent and contender releases, checking if the generated patches were
-// the expected for the strategy at a given moment.
+// TestCompleteStrategyNoController tests the complete "vanguard" strategy,
+// end-to-end.  This test exercises only the Executor.execute() method, using
+// hard coded incumbent and contender releases, checking if the generated
+// patches were the expected for the strategy at a given moment. Since the
+// target objects are always in a Ready state, there's no need to mimic the
+// other controllers, as just updating their specs will trigger the necessary
+// conditions.
 func TestCompleteStrategyNoController(t *testing.T) {
 	totalReplicaCount := uint(10)
 	executor := &Executor{
@@ -48,107 +50,49 @@ func TestCompleteStrategyNoController(t *testing.T) {
 		strategy:  vanguard,
 	}
 
-	// Mimic patch to .spec.targetStep.
-	executor.contender.release.Spec.TargetStep = 1
+	for _, step := range []int32{1, 2} {
+		executor.contender.release.Spec.TargetStep = step
 
-	// Execute first part of strategy's first step.
-	if newSpec, err := ensureCapacityPatch(executor, contenderName, Contender); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.contender.capacityTarget.Spec = *newSpec
+		// Execute first part of strategy's step.
+		if newSpec, err := ensureCapacityPatch(executor, contenderName, Contender); err != nil {
+			t.Fatal(err)
+		} else {
+			executor.contender.capacityTarget.Spec = *newSpec
+		}
+
+		// Execute second part of strategy's step.
+		if newSpec, err := ensureTrafficPatch(executor, contenderName, Contender); err != nil {
+			t.Fatal(err)
+		} else {
+			executor.contender.trafficTarget.Spec = *newSpec
+		}
+
+		// Execute third part of strategy's step.
+		if newSpec, err := ensureTrafficPatch(executor, incumbentName, Incumbent); err != nil {
+			t.Fatal(err)
+		} else {
+			executor.incumbent.trafficTarget.Spec = *newSpec
+		}
+
+		// Execute fourth part of strategy's step.
+		if newSpec, err := ensureCapacityPatch(executor, incumbentName, Incumbent); err != nil {
+			t.Fatal(err)
+		} else {
+			executor.incumbent.capacityTarget.Spec = *newSpec
+		}
+
+		// Execute fifth part of strategy's step.
+		if newStatus, err := ensureReleasePatch(executor, contenderName); err != nil {
+			t.Fatal(err)
+		} else {
+			executor.contender.release.Status = *newStatus
+		}
 	}
 
-	// Mimic Capacity Controller patch to contender's
-	// .status.clusters.*.achievedPercent.
-	for i := range executor.contender.capacityTarget.Status.Clusters {
-		executor.contender.capacityTarget.Status.Clusters[i].AchievedPercent = 50
-		executor.contender.capacityTarget.Status.Clusters[i].AvailableReplicas = int32(replicas.CalculateDesiredReplicaCount(totalReplicaCount, 50))
-	}
-
-	// Execute second part of strategy's first step.
-	if newSpec, err := ensureTrafficPatch(executor, contenderName, Contender); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.contender.trafficTarget.Spec = *newSpec
-	}
-
-	// Execute third part of strategy's first step.
-	if newSpec, err := ensureTrafficPatch(executor, incumbentName, Incumbent); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.incumbent.trafficTarget.Spec = *newSpec
-	}
-
-	// Execute fourth part of strategy's first step.
-	if newSpec, err := ensureCapacityPatch(executor, incumbentName, Incumbent); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.incumbent.capacityTarget.Spec = *newSpec
-	}
-
-	// Mimic Capacity Controller patch to incumbent's
-	// .status.clusters.*.achievedPercent.
-	for i := range executor.incumbent.capacityTarget.Status.Clusters {
-		executor.incumbent.capacityTarget.Status.Clusters[i].AchievedPercent = 50
-		executor.incumbent.capacityTarget.Status.Clusters[i].AvailableReplicas = int32(replicas.CalculateDesiredReplicaCount(totalReplicaCount, 50))
-	}
-
-	// Execute fifth part of strategy's first step.
-	if newStatus, err := ensureReleasePatch(executor, contenderName); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.contender.release.Status = *newStatus
-	}
-
-	// Mimic patch to contender's .spec.targetStep.
-	executor.contender.release.Spec.TargetStep = 2
-
-	// Execute first part of strategy's second step.
-	if newSpec, err := ensureCapacityPatch(executor, contenderName, Contender); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.contender.capacityTarget.Spec = *newSpec
-	}
-
-	// Mimic Capacity Controller patch to contender's
-	// .status.clusters.*.achievedPercent.
-	for i := range executor.contender.capacityTarget.Status.Clusters {
-		executor.contender.capacityTarget.Status.Clusters[i].AchievedPercent = 100
-		executor.contender.capacityTarget.Status.Clusters[i].AvailableReplicas = int32(replicas.CalculateDesiredReplicaCount(totalReplicaCount, 100))
-	}
-
-	// Execute second part of strategy's second step.
-	if newSpec, err := ensureTrafficPatch(executor, contenderName, Contender); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.contender.trafficTarget.Spec = *newSpec
-	}
-
-	// Execute third part of strategy's second step.
-	if newSpec, err := ensureTrafficPatch(executor, incumbentName, Incumbent); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.incumbent.trafficTarget.Spec = *newSpec
-	}
-
-	// Execute fourth part of strategy's second step.
-	if newSpec, err := ensureCapacityPatch(executor, incumbentName, Incumbent); err != nil {
-		t.Fatal(err)
-	} else {
-		executor.incumbent.capacityTarget.Spec = *newSpec
-	}
-
-	// Mimic Capacity Controller patch to incumbent's
-	// .status.clusters.*.achievedPercent.
-	for i := range executor.incumbent.capacityTarget.Status.Clusters {
-		executor.incumbent.capacityTarget.Status.Clusters[i].AchievedPercent = 0
-		executor.incumbent.capacityTarget.Status.Clusters[i].AvailableReplicas = 0
-	}
-
-	// Execute fifth part of strategy's second step, which is the last one.
 	if err := ensureFinalReleasePatches(executor); err != nil {
 		t.Fatal(err)
 	}
+
 }
 
 // buildIncumbent returns a releaseInfo with an incumbent release and
@@ -243,10 +187,10 @@ func buildIncumbent(totalReplicaCount uint) *releaseInfo {
 		},
 		Status: shipper.CapacityTargetStatus{
 			Clusters: []shipper.ClusterCapacityStatus{
-				{
-					Name:            clusterName,
-					AchievedPercent: 100,
-				},
+				{Name: clusterName},
+			},
+			Conditions: []shipper.TargetCondition{
+				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
 		},
 		Spec: shipper.CapacityTargetSpec{
@@ -388,10 +332,10 @@ func buildContender(totalReplicaCount uint) *releaseInfo {
 		},
 		Status: shipper.CapacityTargetStatus{
 			Clusters: []shipper.ClusterCapacityStatus{
-				{
-					Name:            clusterName,
-					AchievedPercent: 100,
-				},
+				{Name: clusterName},
+			},
+			Conditions: []shipper.TargetCondition{
+				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
 		},
 		Spec: shipper.CapacityTargetSpec{

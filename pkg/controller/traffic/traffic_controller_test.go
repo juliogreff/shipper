@@ -244,7 +244,7 @@ func runTrafficControllerTest(
 	objectsByCluster map[string][]runtime.Object,
 	expectations []trafficTargetTestExpectation,
 ) {
-	f := NewControllerTestFixture()
+	f := shippertesting.NewControllerTestFixture()
 
 	clusterNames := []string{}
 	for clusterName, objects := range objectsByCluster {
@@ -357,7 +357,7 @@ func assertPodTraffic(
 	}
 }
 
-func runController(f *ControllerTestFixture) {
+func runController(f *shippertesting.ControllerTestFixture) {
 	controller := NewController(
 		f.ShipperClient,
 		f.ShipperInformerFactory,
