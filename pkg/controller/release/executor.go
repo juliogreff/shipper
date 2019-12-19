@@ -73,28 +73,17 @@ func (s *Executor) Execute() ([]ExecutorResult, []ReleaseStrategyStateTransition
 	//////////////////////////////////////////////////////////////////////////
 	// Installation
 	//
-	if contenderReady, clusters := checkInstallation(s.contender); !contenderReady {
+	if contenderReady, reason := checkInstallation(s.contender.installationTarget); !contenderReady {
 		s.info("installation pending")
 
-		if len(s.contender.installationTarget.Spec.Clusters) != len(s.contender.installationTarget.Status.Clusters) {
-			strategyConditions.SetUnknown(
-				shipper.StrategyConditionContenderAchievedInstallation,
-				conditions.StrategyConditionsUpdate{
-					Step:               targetStep,
-					LastTransitionTime: lastTransitionTime,
-				})
-		} else {
-			// Contender installation is not ready yet, so we update conditions
-			// accordingly.
-			strategyConditions.SetFalse(
-				shipper.StrategyConditionContenderAchievedInstallation,
-				conditions.StrategyConditionsUpdate{
-					Reason:             ClustersNotReady,
-					Message:            fmt.Sprintf("clusters pending installation: %v. for more details, try `kubectl describe it %s`", clusters, s.contender.installationTarget.Name),
-					Step:               targetStep,
-					LastTransitionTime: lastTransitionTime,
-				})
-		}
+		strategyConditions.SetFalse(
+			shipper.StrategyConditionContenderAchievedInstallation,
+			conditions.StrategyConditionsUpdate{
+				Reason:             ClustersNotReady,
+				Message:            fmt.Sprintf("clusters pending installation: %s. for more details, try `kubectl describe it %s`", reason, s.contender.installationTarget.Name),
+				Step:               targetStep,
+				LastTransitionTime: lastTransitionTime,
+			})
 
 		return []ExecutorResult{s.buildContenderStrategyConditionsPatch(strategyConditions, targetStep, isLastStep)},
 			nil,

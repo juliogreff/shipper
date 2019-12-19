@@ -98,7 +98,6 @@ func TestCompleteStrategyNoController(t *testing.T) {
 // buildIncumbent returns a releaseInfo with an incumbent release and
 // associated objects.
 func buildIncumbent(totalReplicaCount uint) *releaseInfo {
-
 	rel := &shipper.Release{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: shipper.SchemeGroupVersion.String(),
@@ -156,13 +155,8 @@ func buildIncumbent(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.InstallationTargetStatus{
-			Clusters: []*shipper.ClusterInstallationStatus{
-				{
-					Name: clusterName,
-					Conditions: []shipper.ClusterInstallationCondition{
-						{Type: shipper.ClusterConditionTypeReady, Status: corev1.ConditionTrue},
-					},
-				},
+			Conditions: []shipper.TargetCondition{
+				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
 		},
 		Spec: shipper.InstallationTargetSpec{
@@ -186,9 +180,6 @@ func buildIncumbent(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.CapacityTargetStatus{
-			Clusters: []shipper.ClusterCapacityStatus{
-				{Name: clusterName},
-			},
 			Conditions: []shipper.TargetCondition{
 				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
@@ -220,9 +211,6 @@ func buildIncumbent(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.TrafficTargetStatus{
-			Clusters: []*shipper.ClusterTrafficStatus{
-				{Name: clusterName},
-			},
 			Conditions: []shipper.TargetCondition{
 				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
@@ -301,13 +289,8 @@ func buildContender(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.InstallationTargetStatus{
-			Clusters: []*shipper.ClusterInstallationStatus{
-				{
-					Name: clusterName,
-					Conditions: []shipper.ClusterInstallationCondition{
-						{Type: shipper.ClusterConditionTypeReady, Status: corev1.ConditionTrue},
-					},
-				},
+			Conditions: []shipper.TargetCondition{
+				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
 		},
 		Spec: shipper.InstallationTargetSpec{
@@ -331,9 +314,6 @@ func buildContender(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.CapacityTargetStatus{
-			Clusters: []shipper.ClusterCapacityStatus{
-				{Name: clusterName},
-			},
 			Conditions: []shipper.TargetCondition{
 				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
@@ -365,9 +345,6 @@ func buildContender(totalReplicaCount uint) *releaseInfo {
 			}},
 		},
 		Status: shipper.TrafficTargetStatus{
-			Clusters: []*shipper.ClusterTrafficStatus{
-				{Name: clusterName},
-			},
 			Conditions: []shipper.TargetCondition{
 				{Type: shipper.TargetConditionTypeReady, Status: corev1.ConditionTrue},
 			},
