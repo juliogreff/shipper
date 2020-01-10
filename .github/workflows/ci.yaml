@@ -1,0 +1,119 @@
+name: ci
+on: [push, pull_request]
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SHIPPER_VERSION: ${{ github.sha }}
+  IMAGE_TAG: ${{ github.sha }}
+  # DOCKER_REGISTRY: docker.pkg.github.com/${{ github.repository }}
+  DOCKER_REGISTRY: registry:5000
+  HELM_REPO: https://raw.githubusercontent.com/bookingcom/shipper/${{ github.sha }}/test/e2e/testdata
+  USE_IMAGE_NAME_WITH_SHA256:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.13.7'
+
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@v2
+
+        # - name: Install golangci-ling
+        #   run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.21.0
+
+        # - name: Run unit tests
+        #   run: PATH=$(go env GOPATH)/bin:$PATH ./ci/test.sh
+
+      - name: Build artifacts
+        run: make build-all
+
+        # - name: Docker login
+        #   uses: azure/docker-login@v1
+        #   with:
+        #     login-server: docker.pkg.github.com
+        #     username: ${{ github.actor }}
+        #     password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Kind
+        uses: engineerd/setup-kind@v0.2.0
+        with:
+          skipClusterCreation: true
+          config: ci/kind.yaml
+          image: kindest/node:v1.15.7
+          version: "v0.7.0"
+
+      - name: Setup test clusters
+        run: ./ci/registry.sh
+
+      - name: Build images
+        run: make shipper shipper-state-metrics
+
+      # - name: Run end-to-end tests
+      #   run: ./ci/e2e.sh
+
+      # - name: Shipper logs
+      #   if: always()
+      #   run: kubectl -n shipper-system logs $(kubectl -n shipper-system get pod -l app=shipper -o jsonpath='{.items[0].metadata.name}')
+
+
+      - name: Dockerhub login
+        uses: azure/docker-login@v1
+        with:
+          username: juliogreff
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create release
+        # if: startsWith(github.ref, 'refs/tags')
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: BLAH-${{ github.sha }}
+          release_name: ${{ github.sha }}
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+
+      - uses: actions/upload-release-asset@v1.0.1
+        # if: startsWith(github.ref, 'refs/tags')
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.linux-amd64.tar.gz
+          asset_name: shipperctl.linux-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        # if: startsWith(github.ref, 'refs/tags')
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.darwin-amd64.tar.gz
+          asset_name: shipperctl.darwin-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        # if: startsWith(github.ref, 'refs/tags')
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.windows-amd64.tar.gz
+          asset_name: shipperctl.windows-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        # if: startsWith(github.ref, 'refs/tags')
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipper.deployment.yaml
+          asset_name: shipper.deployment.yaml
+          asset_content_type: application/x-yaml
+
+      - uses: actions/upload-release-asset@v1.0.1
+        # if: startsWith(github.ref, 'refs/tags')
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipper-state-metrics.deployment.yaml
+          asset_name: shipper-state-metrics.deployment.yaml
+          asset_content_type: application/x-yaml
+
+      - name: Publish images to Docker Hub
+        # if: startsWith(github.ref, 'refs/tags')
+        run: ./ci/release.sh
