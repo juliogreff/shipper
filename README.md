@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/bookingcom/shipper.svg?branch=master)](https://travis-ci.com/bookingcom/shipper)
+[![Build Status](https://github.com/bookingcom/shipper/workflows/build/badge.svg)](https://github.com/bookingcom/shipper/actions?query=workflow%3Abuild)
 [![Documentation Status](https://readthedocs.org/projects/shipper-k8s/badge/?version=latest)](https://shipper-k8s.readthedocs.io/en/latest/)
 
 # Shipper
