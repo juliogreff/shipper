@@ -1,0 +1,81 @@
+name: release
+on: [push]
+# on:
+#   push:
+#     tags:
+#     - '*'
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  DOCKER_REGISTRY: juliogreff
+  USE_IMAGE_NAME_WITH_SHA256:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup environment with correct versions
+        run: export SHIPPER_VERSION=$(echo $GITHUB_REF | cut -d / -f 3) && export IMAGE_TAG=$SHIPPER_VERSION
+
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.13.7'
+
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@v2
+
+      - name: Docker Hub login
+        uses: azure/docker-login@v1
+        with:
+          username: juliogreff
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build artifacts
+        run: make build-tgz build-yaml shipper shipper-state-metrics
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: BLAH-${{ github.sha }}
+          release_name: ${{ github.sha }}
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+
+      - uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.linux-amd64.tar.gz
+          asset_name: shipperctl.linux-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.darwin-amd64.tar.gz
+          asset_name: shipperctl.darwin-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipperctl.windows-amd64.tar.gz
+          asset_name: shipperctl.windows-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipper.deployment.yaml
+          asset_name: shipper.deployment.yaml
+          asset_content_type: application/x-yaml
+
+      - uses: actions/upload-release-asset@v1.0.1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/shipper-state-metrics.deployment.yaml
+          asset_name: shipper-state-metrics.deployment.yaml
+          asset_content_type: application/x-yaml
+
+      - name: Publish images to Docker Hub
+        run: ./ci/publish_images.sh
+
