@@ -2,10 +2,14 @@
 # override any of these with environment variables. Most notably, when working
 # on shipper, you'll probably want to override DOCKER_REGISTRY to point to a
 # private registry available to you.
-DOCKER_REGISTRY ?= docker.io
+DOCKER_REGISTRY ?= docker.io/bookingcom
 IMAGE_TAG ?= latest
-SHIPPER_IMAGE ?= $(DOCKER_REGISTRY)/bookingcom/shipper:$(IMAGE_TAG)
-SHIPPER_STATE_METRICS_IMAGE ?= $(DOCKER_REGISTRY)/bookingcom/shipper-state-metrics:$(IMAGE_TAG)
+SHIPPER_IMAGE ?= $(DOCKER_REGISTRY)/shipper:$(IMAGE_TAG)
+SHIPPER_STATE_METRICS_IMAGE ?= $(DOCKER_REGISTRY)/shipper-state-metrics:$(IMAGE_TAG)
+
+# TODO
+BASE_IMAGE=alpine:3.8
+HELM_REPO=https://raw.githubusercontent.com/bookingcom/shipper/master/test/e2e/testdata
 
 # Defines the namespace where you want shipper to run.
 SHIPPER_NAMESPACE ?= shipper-system
@@ -20,7 +24,7 @@ SHIPPER_CLUSTERS_YAML ?= ci/clusters.yaml
 # that errors out, or returns nothing, you probably need to run `make setup`
 # first. This value needs to be present in the `applicationClusters` section in
 # $(SHIPPER_CLUSTERS_YAML).
-SHIPPER_CLUSTER ?= microk8s
+SHIPPER_CLUSTER ?= kind-kind
 
 # Defines optional flags to pass to `build/e2e.test` when running end-to-end
 # tests. Useful flags are "-inspectfailed" (keep namespaces used for tests that
@@ -101,7 +105,7 @@ install-shipper-state-metrics: build/shipper-state-metrics.image.$(IMAGE_TAG) bu
 e2e: install build/e2e.test
 	./build/e2e.test --e2e --kubeconfig ~/.kube/config \
 		--appcluster $(SHIPPER_CLUSTER) \
-		--testcharts $(TEST_HELM_REPO_URL) \
+		--testcharts $(HELM_REPO) \
 		$(E2E_FLAGS)
 
 # Delete all pods in $(SHIPPER_NAMESPACE), to force kubernetes to spawn new
@@ -145,12 +149,12 @@ clean:
 	rm -rf build/
 
 # *** build/ targets ***
-.PHONY: build-bin build-yaml build-images build-all
+.PHONY: build-bin build-yaml build-all build-tgz
 SHA = $(if $(shell which sha256sum),sha256sum,shasum -a 256)
 build-bin: $(foreach bin,$(BINARIES),build/$(bin).$(GOOS)-amd64)
 build-yaml:  build/shipper.deployment.$(IMAGE_TAG).yaml build/shipper-state-metrics.deployment.$(IMAGE_TAG).yaml
-build-images: build/shipper.image.$(IMAGE_TAG) build/shipper-state-metrics.image.$(IMAGE_TAG)
-build-all: $(foreach os,$(OS),build/shipperctl.$(os)-amd64.tar.gz) build/sha256sums.txt build-yaml build-images
+build-tgz: $(foreach os,$(OS),build/shipperctl.$(os)-amd64.tar.gz)
+build-all: build-tgz build-yaml build/sha256sums.txt
 
 build:
 	mkdir -p build
@@ -169,7 +173,7 @@ build/e2e.test: $(PKG) test/e2e/*
 
 IMAGE_NAME_WITH_SHA256 = $(shell cat build/$*.image.$(IMAGE_TAG))
 IMAGE_NAME_TO_USE = $(if $(USE_IMAGE_NAME_WITH_SHA256),$(IMAGE_NAME_WITH_SHA256),$(IMAGE_NAME_WITH_TAG))
-build/%.deployment.$(IMAGE_TAG).yaml: kubernetes/%.deployment.yaml build/%.image.$(IMAGE_TAG) build
+build/%.deployment.$(IMAGE_TAG).yaml: kubernetes/%.deployment.yaml build $(if $(USE_IMAGE_NAME_WITH_SHA256),build/%.image.$(IMAGE_TAG),)
 	sed s=\<IMAGE\>=$(IMAGE_NAME_TO_USE)= $< > $@
 
 build/sha256sums.txt: $(foreach os,$(OS),build/shipperctl.$(os)-amd64.tar.gz) 
@@ -185,7 +189,7 @@ build/%.tar.gz: build/%
 # variable name, that then gets evaluated, kind of like a poor man's hash. So
 # if you have "shipper" in $*, IMAGE_NAME_WITH_TAG will read from
 # $(SHIPPER_IMAGE).
-IMAGE_NAME_WITH_TAG = $($(subst -,_,$(shell echo $* | tr '[:lower:]' '[:upper:]'))_IMAGE)
+IMAGE_NAME_WITH_TAG ?= $($(subst -,_,$(shell echo $* | tr '[:lower:]' '[:upper:]'))_IMAGE)
 
 # The shipper and shipper-state-metrics targets here are phony and
 # supposed to be used directly, as a shorthand. They call their close cousins
@@ -204,7 +208,13 @@ IMAGE_NAME_WITH_TAG = $($(subst -,_,$(shell echo $* | tr '[:lower:]' '[:upper:]'
 shipper: build/shipper.image.$(IMAGE_TAG)
 shipper-state-metrics: build/shipper-state-metrics.image.$(IMAGE_TAG)
 
-build/%.image.$(IMAGE_TAG): Dockerfile.% build/%.linux-amd64
-	docker build -f Dockerfile.$* -t $(IMAGE_NAME_WITH_TAG) --build-arg HTTP_PROXY=$(HTTP_PROXY) --build-arg HTTPS_PROXY=$(HTTPS_PROXY) .
+build/%.image.$(IMAGE_TAG): build/%.linux-amd64 Dockerfile
+	docker build \
+		-t $(IMAGE_NAME_WITH_TAG) \
+		--build-arg HTTP_PROXY=$(HTTP_PROXY) \
+		--build-arg HTTPS_PROXY=$(HTTPS_PROXY) \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		--build-arg CMD_NAME=$* \
+		.
 	docker push $(IMAGE_NAME_WITH_TAG)
 	docker inspect --format='{{index .RepoDigests 0}}' $(IMAGE_NAME_WITH_TAG) > $@
