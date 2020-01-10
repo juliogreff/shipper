@@ -1,0 +1,110 @@
+name: ci
+on: [push, pull_request]
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SHIPPER_VERSION: ${{ github.sha }}
+  IMAGE_TAG: ${{ github.sha }}
+  # DOCKER_REGISTRY: docker.pkg.github.com/${{ github.repository }}
+  DOCKER_REGISTRY: registry:5000
+  HELM_REPO: https://raw.githubusercontent.com/bookingcom/shipper/${{ github.sha }}/test/e2e/testdata
+  USE_IMAGE_NAME_WITH_SHA256:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_REGISTRY: docker.pkg.github.com/${{ github.repository }}
+
+    strategy:
+      matrix:
+        bin: [shipperctl, shipper, shipper-state-metrics]
+        arch: [amd64]
+        include:
+          - bin: shipperctl
+            os: linux
+          - bin: shipperctl
+            os: windows
+          - bin: shipperctl
+            os: darwin
+
+          - bin: shipper
+            os: linux
+            containers: 1
+
+          - bin: shipper-state-metrics
+            os: linux
+            containers: 1
+
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@v2
+
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.13.7'
+
+      - name: Docker login
+        uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build binary
+        run: make build/${{ matrix.bin }}.${{ matrix.os }}-${{ matrix.arch }}
+
+      - name: Build image
+        if: matrix.containers
+        run: make ${{ matrix.bin }}
+
+
+
+
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.13.7'
+
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@v2
+
+      - name: Install golangci-ling
+        run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.21.0
+
+      - name: Run unit tests
+        run: PATH=$(go env GOPATH)/bin:$PATH ./ci/test.sh
+
+      - name: Build binaries
+        run: ./ci/build.sh
+
+      # - name: Docker login
+      #   uses: azure/docker-login@v1
+      #   with:
+      #     login-server: docker.pkg.github.com
+      #     username: ${{ github.actor }}
+      #     password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Kind
+        uses: engineerd/setup-kind@v0.2.0
+        with:
+          skipClusterCreation: true
+          config: ci/kind.yaml
+          image: kindest/node:v1.15.7
+          version: "v0.7.0"
+
+      - name: Setup test clusters
+        run: ./ci/setup_clusters.sh
+
+      - name: Build images
+        run: make shipper shipper-state-metrics
+
+      - name: Run end-to-end tests
+        run: ./ci/e2e.sh
+
+      - name: Shipper logs
+        if: always()
+        run: kubectl -n shipper-system logs $(kubectl -n shipper-system get pod -l app=shipper -o jsonpath='{.items[0].metadata.name}')
